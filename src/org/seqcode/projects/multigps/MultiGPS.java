@@ -195,6 +195,8 @@ public class MultiGPS {
 		ExptConfig econ = new ExptConfig(gcon.getGenome(), args);
 		EventsConfig evconfig = new EventsConfig(gcon, args);
 		MultiGPSConfig config = new MultiGPSConfig(gcon, args);
+		System.err.println("potential regions: "+config.getPotentialRegions());
+		System.err.println("test regions: "+config.getMEMEpath());
 		if(config.helpWanted()){
 			System.err.println(MultiGPS.getMultiGPSArgsList());
 		}else{

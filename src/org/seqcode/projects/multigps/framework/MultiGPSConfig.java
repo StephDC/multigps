@@ -66,6 +66,7 @@ public class MultiGPSConfig {
 	protected boolean MEMEnonparallel=false; //flag to enforce use of non-parallel version
 	public int MEMEminw=6;
 	public int MEMEmaxw=18;
+	protected String potentialRegions=""; //Where the Potential Regions file is
 	protected boolean verbose = false; //Print extra output
 	 
     
@@ -217,7 +218,9 @@ public class MultiGPSConfig {
 				MEMEargs = MEMEargs + " -nmotifs "+MEMEnmotifs + " -minw "+MEMEminw+" -maxw "+MEMEmaxw;
 				//Enforce non-parallel MEME
 				MEMEnonparallel = Args.parseFlags(args).contains("meme1proc");
-				
+				//Potential Regions file path
+				potentialRegions = Args.parseString(args, "potentialregions", potentialRegions);
+				System.err.println("populate "+potentialRegions);
 				//Extra output
 				verbose = Args.parseFlags(args).contains("verbose") ? true : false;
 				//Shared component config in ML step
@@ -281,6 +284,7 @@ public class MultiGPSConfig {
 	public String getMEMEpath(){return MEMEpath;}
 	public String getMEMEargs(){return MEMEargs;}
 	public boolean getMEMEnonparallel(){return MEMEnonparallel;}
+	public String getPotentialRegions(){return potentialRegions;}
 	public boolean isVerbose(){return verbose;}
 	
 	/**
