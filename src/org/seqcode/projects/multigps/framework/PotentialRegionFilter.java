@@ -30,25 +30,25 @@ import org.seqcode.gseutils.RealValuedHistogram;
 
 
 /**
- * PotentialRegionFilter: Find a set of regions that are above a threshold in at least one condition. 
- * 		A region the size of the model span (i.e. 2x model range) potentially contains a binding site if 
+ * PotentialRegionFilter: Find a set of regions that are above a threshold in at least one condition.
+ * 		A region the size of the model span (i.e. 2x model range) potentially contains a binding site if
  * 		it passes the Poisson threshold in at least one condition.
- * 		The Poisson thresholds are based on the model span size to keep consistent with the final used thresholds. 
- * Overall counts for reads in potential regions and outside potential regions are maintained to assist noise model initialization.  
- * 
+ * 		The Poisson thresholds are based on the model span size to keep consistent with the final used thresholds.
+ * Overall counts for reads in potential regions and outside potential regions are maintained to assist noise model initialization.
+ *
  * @author Shaun Mahony
  * @version	%I%, %G%
  */
 public class PotentialRegionFilter {
 
-	protected ExperimentManager manager; 
+	protected ExperimentManager manager;
 	protected BindingManager bindingManager;
 	protected EventsConfig evconfig;
 	protected MultiGPSConfig config;
 	protected ExptConfig econfig;
 	protected Genome gen;
 	protected float maxBinWidth=0, binStep, winExt;
-	protected boolean loadControl=true; 
+	protected boolean loadControl=true;
 	protected boolean stranded=false;
 	protected List<Region> potentialRegions = new ArrayList<Region>();
 	protected double potRegionLengthTotal=0;
@@ -56,53 +56,52 @@ public class PotentialRegionFilter {
 	protected HashMap<ExperimentCondition, Double> potRegCountsSigChannel = new HashMap<ExperimentCondition, Double>();
 	protected HashMap<ExperimentCondition, Double> nonPotRegCountsSigChannel = new HashMap<ExperimentCondition, Double>();
 	protected HashMap<ExperimentCondition, Double> potRegCountsCtrlChannel = new HashMap<ExperimentCondition, Double>();
-	protected HashMap<ExperimentCondition, Double> nonPotRegCountsCtrlChannel = new HashMap<ExperimentCondition, Double>();	
+	protected HashMap<ExperimentCondition, Double> nonPotRegCountsCtrlChannel = new HashMap<ExperimentCondition, Double>();
 	protected HashMap<ControlledExperiment, Double> potRegCountsSigChannelByRep = new HashMap<ControlledExperiment, Double>();
 	protected HashMap<ControlledExperiment, Double> nonPotRegCountsSigChannelByRep = new HashMap<ControlledExperiment, Double>();
-	
+
 	public PotentialRegionFilter(EventsConfig ec, MultiGPSConfig c, ExptConfig econ, ExperimentManager eman, BindingManager bman){
 		manager = eman;
 		bindingManager = bman;
 		evconfig = ec;
-		config = c; 
+		config = c;
 		econfig = econ;
 		gen = config.getGenome();
 		//Initialize background models
 		for(ExperimentCondition cond : manager.getConditions()){
 			conditionBackgrounds.put(cond, new BackgroundCollection());
-			int maxIR = 0; boolean hasControls=true; 
+			int maxIR = 0; boolean hasControls=true;
 			for(ControlledExperiment rep : cond.getReplicates()){
 				if(bindingManager.getBindingModel(rep).getInfluenceRange()>maxIR)
 					maxIR = bindingManager.getBindingModel(rep).getInfluenceRange();
 				hasControls = hasControls && rep.hasControl();
 			}
-			
+
 			float binWidth = maxIR;
-    		if(binWidth>maxBinWidth){maxBinWidth=binWidth;}
-    			
+			if(binWidth>maxBinWidth){maxBinWidth=binWidth;}
+
     		//global threshold
     		conditionBackgrounds.get(cond).addBackgroundModel(new PoissonBackgroundModel(-1, config.getPRLogConf(), cond.getTotalSignalCount(), config.getGenome().getGenomeLength(), econfig.getMappableGenomeProp(), binWidth, '.', 1, true));
     		//local windows won't work since we are testing per condition and we don't have a way to scale signal vs controls at the condition level (at least at this stage of execution)
-    		
+
     		double thres = conditionBackgrounds.get(cond).getGenomicModelThreshold();
     		System.err.println("PotentialRegionFilter: genomic threshold for "+cond.getName()+" with bin width "+binWidth+" = "+thres);
-    			
+
     		//Initialize counts
     		potRegCountsSigChannel.put(cond, 0.0);
     		nonPotRegCountsSigChannel.put(cond, 0.0);
     		potRegCountsCtrlChannel.put(cond, 0.0);
     		nonPotRegCountsCtrlChannel.put(cond, 0.0);
-    		for(ControlledExperiment rep : cond.getReplicates()){
-    			potRegCountsSigChannelByRep.put(rep, 0.0);
-        		nonPotRegCountsSigChannelByRep.put(rep, 0.0);
-    		}
-    	}
+			for(ControlledExperiment rep : cond.getReplicates()){
+				potRegCountsSigChannelByRep.put(rep, 0.0);
+				nonPotRegCountsSigChannelByRep.put(rep, 0.0);
+			}
+		}
 		binStep = config.POTREG_BIN_STEP;
-		if(binStep>maxBinWidth/2)
-			binStep=maxBinWidth/2;
+		if(binStep>maxBinWidth/2) binStep=maxBinWidth/2;
 		winExt = maxBinWidth/2;
 	}
-	
+
 	//Accessors for read counts
 	public Double getPotRegCountsSigChannel(ExperimentCondition e){ return potRegCountsSigChannel.get(e);}
 	public Double getNonPotRegCountsSigChannel(ExperimentCondition e){ return nonPotRegCountsSigChannel.get(e);}
@@ -112,19 +111,19 @@ public class PotentialRegionFilter {
 	public Double getNonPotRegCountsSigChannelByRep(ControlledExperiment e){ return nonPotRegCountsSigChannelByRep.get(e);}
 	public List<Region> getPotentialRegions(){return potentialRegions;}
 	public double getPotRegionLengthTotal(){return potRegionLengthTotal;}
-	
+
 	/**
-	 * Find list of potentially enriched regions 
+	 * Find list of potentially enriched regions
 	 * (windows that contain the minimum number of reads needed to pass the Poisson backgrounds).
 	 * @param testRegions
 	 */
 	public List<Region> execute(){
 		//TODO: check config for defined subset of regions
 		Iterator<Region> testRegions = new ChromosomeGenerator().execute(config.getGenome());
-		
-		//Threading divides analysis over entire chromosomes. This approach is not compatible with file caching. 
+
+		//Threading divides analysis over entire chromosomes. This approach is not compatible with file caching.
 		int numThreads = econfig.getCacheAllData() ? config.getMaxThreads() : 1;
-				
+
 		Thread[] threads = new Thread[numThreads];
         ArrayList<Region> threadRegions[] = new ArrayList[numThreads];
         int i = 0;
@@ -132,8 +131,8 @@ public class PotentialRegionFilter {
             threadRegions[i] = new ArrayList<Region>();
         }i=0;
         while(testRegions.hasNext()){
-        	Region r = testRegions.next(); 
-            threadRegions[(i++) % numThreads].add(r);
+        	Region r = testRegions.next();
+        	threadRegions[(i++) % numThreads].add(r);
         }
 
         for (i = 0 ; i < threads.length; i++) {
@@ -154,7 +153,7 @@ public class PotentialRegionFilter {
                 }
             }
         }
-        
+
         //Initialize signal & noise counts based on potential region calls
         for(ExperimentCondition cond : manager.getConditions()){
     		for(ControlledExperiment rep : cond.getReplicates()){
@@ -162,40 +161,40 @@ public class PotentialRegionFilter {
     				rep.setSignalVsNoiseFraction(potRegCountsSigChannelByRep.get(rep)/(potRegCountsSigChannelByRep.get(rep)+nonPotRegCountsSigChannelByRep.get(rep)));
     		}
         }
-        
+
         for(Region r : potentialRegions)
         	potRegionLengthTotal+=(double)r.getWidth();
-        
+
      	return potentialRegions;
 	}
-	
+
 	/**
-     * Print potential regions to a file.
-     * TESTING ONLY 
-     */
-    public void printPotentialRegionsToFile(){
-    	try {
-    		String filename = config.getOutputIntermediateDir()+File.separator+config.getOutBase()+".potential.regions";
+	 * Print potential regions to a file.
+	 * TESTING ONLY
+	 */
+	public void printPotentialRegionsToFile(){
+    		try {
+    			String filename = config.getOutputIntermediateDir()+File.separator+config.getOutBase()+".potential.regions";
 			FileWriter fout = new FileWriter(filename);
 			for(Region r : potentialRegions){
-	    		fout.write(r.getLocationString()+"\n");			
-	    	}
+		    		fout.write(r.getLocationString()+"\n");
+			}
 			fout.close();
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
-    }
-	
+	}
+
     class PotentialRegionFinderThread implements Runnable {
         private Collection<Region> regions;
         private float[][] landscape=null;
         private float[][] starts=null;
         private List<Region> threadPotentials = new ArrayList<Region>();
-        
+
         public PotentialRegionFinderThread(Collection<Region> r) {
             regions = r;
         }
-        
+
         public void run() {
         	int expansion = (int)(winExt + maxBinWidth/2);
         	for (Region currentRegion : regions) {
@@ -205,12 +204,12 @@ public class PotentialRegionFilter {
                     int y = (int) (x+config.MAXSECTION+(expansion)); //Leave a little overhang to handle enriched regions that may hit the border. Since lastPotential is defined above, a region on the boundary should get merged in.
                     if(y>currentRegion.getEnd()){y=currentRegion.getEnd();}
                     Region currSubRegion = new Region(gen, currentRegion.getChrom(), x, y);
-                    
+
                     List<Region> currPotRegions = new ArrayList<Region>();
                     List<List<StrandedBaseCount>> ipHits = new ArrayList<List<StrandedBaseCount>>();
                     List<List<StrandedBaseCount>> backHits = new ArrayList<List<StrandedBaseCount>>();
                     List<List<StrandedBaseCount>> ipHitsByRep = new ArrayList<List<StrandedBaseCount>>();
-                    
+
                     synchronized(manager){
 	                    //Initialize the read lists
                     	for(ExperimentCondition cond : manager.getConditions()){
@@ -219,7 +218,7 @@ public class PotentialRegionFilter {
                     		for(ControlledExperiment rep : cond.getReplicates())
                     			ipHitsByRep.add(new ArrayList<StrandedBaseCount>());
                     	}
-                    	//Load signal reads by condition and by replicate, so that signal proportion estimates can be assigned to each replicate 
+                    	//Load signal reads by condition and by replicate, so that signal proportion estimates can be assigned to each replicate
                     	for(ExperimentCondition cond : manager.getConditions()){
                     		for(ControlledExperiment rep : cond.getReplicates()){
                     			ipHits.get(cond.getIndex()).addAll(rep.getSignal().getBases(currSubRegion));
@@ -230,12 +229,12 @@ public class PotentialRegionFilter {
                     		Collections.sort(backHits.get(cond.getIndex()));
                     	}
                     }
-                    
+
             		int numStrandIter = stranded ? 2 : 1;
                     for(int stranditer=1; stranditer<=numStrandIter; stranditer++){
                         //If stranded peak-finding, run over both strands separately
                         char str = !stranded ? '.' : (stranditer==1 ? '+' : '-');
-					 
+
                         makeHitLandscape(ipHits, currSubRegion, maxBinWidth, binStep, str);
                         float ipHitCounts[][] = landscape.clone();
                         float ipBinnedStarts[][] = starts.clone();
@@ -244,7 +243,7 @@ public class PotentialRegionFilter {
                             makeHitLandscape(backHits, currSubRegion, maxBinWidth, binStep, str);
                             backBinnedStarts = starts.clone();
                         }
-					
+
                         //Scan regions
                         int currBin=0;
                         for(int i=currSubRegion.getStart(); i<currSubRegion.getEnd()-(int)maxBinWidth; i+=(int)binStep){
@@ -310,9 +309,9 @@ public class PotentialRegionFilter {
         		synchronized(potentialRegions){
         			potentialRegions.addAll(threadPotentials);
         		}
-        	}	
+        	}
         }
-        
+
         //Break up a long window into parts
         //For now, we just choose the break points as the bins with the lowest total signal read count around the desired length.
         //TODO: improve?
@@ -320,7 +319,7 @@ public class PotentialRegionFilter {
 			List<Region> parts = new ArrayList<Region>();
 			makeHitLandscape(ipHits, lastPotential, maxBinWidth, binStep, str);
             float ipHitCounts[][] = landscape.clone();
-            
+
             int currPartStart = lastPotential.getStart();
             double currPartTotalMin=Double.MAX_VALUE; int currPartTotalMinPos = -1;
             int currBin=0;
@@ -330,8 +329,8 @@ public class PotentialRegionFilter {
             	float currBinTotal=0;
             	for(ExperimentCondition cond : manager.getConditions())
                 	currBinTotal+=ipHitCounts[cond.getIndex()][currBin];
-            	
-            	if(i>(currPartStart+preferredWinLen-1000) && i<(currPartStart+preferredWinLen+1000)){ 
+
+            	if(i>(currPartStart+preferredWinLen-1000) && i<(currPartStart+preferredWinLen+1000)){
             		if(currBinTotal<currPartTotalMin){
             			currPartTotalMin=currBinTotal;
             			currPartTotalMinPos=i;
@@ -346,7 +345,7 @@ public class PotentialRegionFilter {
             	currBin++;
             }
             parts.add(new Region(lastPotential.getGenome(), lastPotential.getChrom(), currPartStart, lastPotential.getEnd()));
-            
+
 			return parts;
 		}
 
@@ -355,7 +354,7 @@ public class PotentialRegionFilter {
 			List<Region> filtered = new ArrayList<Region>();
 			if(config.getRegionsToIgnore().size()==0)
 				return testRegions;
-			
+
 			for(Region t : testRegions){
 				boolean ignore = false;
 				for(Region i : config.getRegionsToIgnore()){
@@ -399,14 +398,14 @@ public class PotentialRegionFilter {
     		if(x>max){return max;}
     		return x;
     	}
-    	
+
     	/**
     	 * Count the total reads within potential regions via semi binary search (by condition).
     	 * Assumes both regs and ipHits are sorted.
     	 * We don't have to check chr String matches, as the hits were extracted from the chromosome
     	 * EndCoord accounts for the extra overhang added to some wide regions
     	 * We also ignore strandedness here -- the object is to count ALL reads that will be loaded for analysis later
-    	 * (and that thus will not be accounted for by the global noise model)  
+    	 * (and that thus will not be accounted for by the global noise model)
     	 * @param regs
     	 * @param ipHits
     	 * @param ctrlHits
@@ -487,14 +486,14 @@ public class PotentialRegionFilter {
     		}
 	    }
     }
-    
+
     /**
 	 * Count the total reads within potential regions via semi binary search (by replicate).
 	 * Assumes both regs and ipHitsByRep are sorted.
 	 * We don't have to check chr String matches, as the hits were extracted from the chromosome
 	 * EndCoord accounts for the extra overhang added to some wide regions
 	 * We also ignore strandedness here -- the object is to count ALL reads that will be loaded for analysis later
-	 * (and that thus will not be accounted for by the global noise model)  
+	 * (and that thus will not be accounted for by the global noise model)
 	 * @param regs
 	 * @param ipHitsByRep
 	 * @param ctrlHits
@@ -533,7 +532,7 @@ public class PotentialRegionFilter {
 	    				}
 					}
 				}
-				
+
 				synchronized(potRegCountsSigChannelByRep){
 					potRegCountsSigChannelByRep.put(rep, potRegCountsSigChannelByRep.get(rep)+currPotWeightSig);
 				}
@@ -544,7 +543,7 @@ public class PotentialRegionFilter {
 		}
     }
 
-    
+
     /**
 	 * This main method is only for testing the PotentialRegionFilter
 	 * @param args
@@ -574,9 +573,9 @@ public class PotentialRegionFilter {
 			}
 			for(ExperimentCondition cond : manager.getConditions())
 				bman.updateMaxInfluenceRange(cond);
-			
+
 			RealValuedHistogram histo = new RealValuedHistogram(0, 10000, 20);
-			
+
 			System.err.println("Conditions:\t"+manager.getConditions().size());
 			for(ExperimentCondition c : manager.getConditions()){
 				System.err.println("Condition "+c.getName()+":\t#Replicates:\t"+c.getReplicates().size());
@@ -590,10 +589,10 @@ public class PotentialRegionFilter {
 						System.err.println("\tSignal:\t"+r.getSignal().getHitCount()+"\tControl:\t"+r.getControl().getHitCount());
 				}
 			}
-			
+
 			PotentialRegionFilter filter = new PotentialRegionFilter(evconfig, config, econfig, manager, bman);
 			List<Region> potentials = filter.execute();
-			
+
 			int min = Integer.MAX_VALUE;
 			int max = -Integer.MAX_VALUE;
 			for(Region r : potentials){
@@ -607,12 +606,11 @@ public class PotentialRegionFilter {
 			System.err.println("Potential Regions: "+potentials.size());
 			System.err.println("Min width: "+min+"\tMax width: "+max);
 			histo.printContents(true);
-			
+
 			System.err.println("Proportions of tags in potential regions");
 			for(ExperimentCondition c : manager.getConditions())
 				for(ControlledExperiment r : c.getReplicates())
 					System.err.println("Condition "+c.getName()+":\tRep "+r.getName()+"\t"+r.getSignalVsNoiseFraction());
-					
 			manager.close();
 		}
 	}
