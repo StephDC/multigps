@@ -3,6 +3,12 @@ package org.seqcode.projects.multigps.framework;
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
+// Try to use java.nio to access potential files.
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.nio.charset.Charset;
+
+import java.util.LinkedList;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -67,18 +73,23 @@ public class PotentialRegionFilter {
 		config = c;
 		econfig = econ;
 		gen = config.getGenome();
-		//Initialize background models
-		for(ExperimentCondition cond : manager.getConditions()){
-			conditionBackgrounds.put(cond, new BackgroundCollection());
-			int maxIR = 0; boolean hasControls=true;
-			for(ControlledExperiment rep : cond.getReplicates()){
-				if(bindingManager.getBindingModel(rep).getInfluenceRange()>maxIR)
-					maxIR = bindingManager.getBindingModel(rep).getInfluenceRange();
-				hasControls = hasControls && rep.hasControl();
-			}
 
-			float binWidth = maxIR;
-			if(binWidth>maxBinWidth){maxBinWidth=binWidth;}
+		//Branch to read a given potential regions file here
+		if (!(config.getPotentialRegions()== "" || Files.exists(Paths.get(config.getPotentialRegions()))))
+			System.err.println("Potential Region File not Found! Fall back to potential region auto-detection.");
+		if (config.getPotentialRegions() == "" || (!Files.exists(Paths.get(config.getPotentialRegions())))){
+			//Initialize background models
+			for(ExperimentCondition cond : manager.getConditions()){
+				conditionBackgrounds.put(cond, new BackgroundCollection());
+				int maxIR = 0; boolean hasControls=true;
+				for(ControlledExperiment rep : cond.getReplicates()){
+					if(bindingManager.getBindingModel(rep).getInfluenceRange()>maxIR)
+						maxIR = bindingManager.getBindingModel(rep).getInfluenceRange();
+					hasControls = hasControls && rep.hasControl();
+				}
+
+				float binWidth = maxIR;
+				if(binWidth>maxBinWidth){maxBinWidth=binWidth;}
 
     		//global threshold
     		conditionBackgrounds.get(cond).addBackgroundModel(new PoissonBackgroundModel(-1, config.getPRLogConf(), cond.getTotalSignalCount(), config.getGenome().getGenomeLength(), econfig.getMappableGenomeProp(), binWidth, '.', 1, true));
@@ -92,14 +103,15 @@ public class PotentialRegionFilter {
     		nonPotRegCountsSigChannel.put(cond, 0.0);
     		potRegCountsCtrlChannel.put(cond, 0.0);
     		nonPotRegCountsCtrlChannel.put(cond, 0.0);
-			for(ControlledExperiment rep : cond.getReplicates()){
-				potRegCountsSigChannelByRep.put(rep, 0.0);
-				nonPotRegCountsSigChannelByRep.put(rep, 0.0);
+				for(ControlledExperiment rep : cond.getReplicates()){
+					potRegCountsSigChannelByRep.put(rep, 0.0);
+					nonPotRegCountsSigChannelByRep.put(rep, 0.0);
+				}
 			}
+			binStep = config.POTREG_BIN_STEP;
+			if(binStep>maxBinWidth/2) binStep=maxBinWidth/2;
+			winExt = maxBinWidth/2;
 		}
-		binStep = config.POTREG_BIN_STEP;
-		if(binStep>maxBinWidth/2) binStep=maxBinWidth/2;
-		winExt = maxBinWidth/2;
 	}
 
 	//Accessors for read counts
@@ -118,22 +130,24 @@ public class PotentialRegionFilter {
 	 * @param testRegions
 	 */
 	public List<Region> execute(){
-		//TODO: check config for defined subset of regions
-		Iterator<Region> testRegions = new ChromosomeGenerator().execute(config.getGenome());
+		//Branch here for reading from a given file.
+		if (config.getPotentialRegions() == "" || (!Files.exists(Paths.get(config.getPotentialRegions())))){
+			//TODO: check config for defined subset of regions
+			Iterator<Region> testRegions = new ChromosomeGenerator().execute(config.getGenome());
 
-		//Threading divides analysis over entire chromosomes. This approach is not compatible with file caching.
-		int numThreads = econfig.getCacheAllData() ? config.getMaxThreads() : 1;
+			//Threading divides analysis over entire chromosomes. This approach is not compatible with file caching.
+			int numThreads = econfig.getCacheAllData() ? config.getMaxThreads() : 1;
 
-		Thread[] threads = new Thread[numThreads];
-        ArrayList<Region> threadRegions[] = new ArrayList[numThreads];
-        int i = 0;
-        for (i = 0 ; i < threads.length; i++) {
-            threadRegions[i] = new ArrayList<Region>();
-        }i=0;
-        while(testRegions.hasNext()){
-        	Region r = testRegions.next();
-        	threadRegions[(i++) % numThreads].add(r);
-        }
+			Thread[] threads = new Thread[numThreads];
+		        ArrayList<Region> threadRegions[] = new ArrayList[numThreads];
+		        int i = 0;
+        		for (i = 0 ; i < threads.length; i++) {
+				threadRegions[i] = new ArrayList<Region>();
+        		}i=0;
+		        while(testRegions.hasNext()){
+        			Region r = testRegions.next();
+        			threadRegions[(i++) % numThreads].add(r);
+			}
 
         for (i = 0 ; i < threads.length; i++) {
             Thread t = new Thread(new PotentialRegionFinderThread(threadRegions[i]));
@@ -166,8 +180,38 @@ public class PotentialRegionFilter {
         	potRegionLengthTotal+=(double)r.getWidth();
 
      	return potentialRegions;
+		}
+		//Actual branch
+		else {
+			List<Region> result = new LinkedList<Region>();
+			Region tmp = null;
+			try{
+				for (String item: Files.readAllLines(Paths.get(config.getPotentialRegions()),Charset.forName("UTF-8"))){
+					tmp = parseLine(item);
+					if (tmp != null) result.add(tmp);
+				}
+			}
+			catch (IOException e){
+				e.printStackTrace();
+			}
+			return result;
+		}
 	}
-
+	/**
+	 * Parse the potential regions file
+	 * as used in the execute - branch 2.
+	 */
+	private Region parseLine(String line){
+		if (line.trim().equals("")) return null;
+		try{
+			String chromosome = line.trim().split(":")[0];
+			int start = Integer.parseInt(line.trim().split(":")[1].split("-")[0]);
+			int end  = Integer.parseInt(line.trim().split("-")[1]);
+			return new Region(gen,chromosome,start,end);
+		} catch (java.lang.ArrayIndexOutOfBoundsException e) {
+			return null;
+		}
+	}
 	/**
 	 * Print potential regions to a file.
 	 * TESTING ONLY
