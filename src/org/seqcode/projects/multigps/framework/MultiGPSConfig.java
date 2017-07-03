@@ -67,6 +67,7 @@ public class MultiGPSConfig {
 	public int MEMEminw=6;
 	public int MEMEmaxw=18;
 	protected String potentialRegions=""; //Where the Potential Regions file is
+	protected boolean resizePR=true; //Resize the potential regions based on initial scan result
 	protected boolean verbose = false; //Print extra output
 	 
     
@@ -220,7 +221,7 @@ public class MultiGPSConfig {
 				MEMEnonparallel = Args.parseFlags(args).contains("meme1proc");
 				//Potential Regions file path
 				potentialRegions = Args.parseString(args, "potentialregions", potentialRegions);
-				System.err.println("populate "+potentialRegions);
+				if (potentialRegions != "") resizePR = ! Args.parseFlags(args).contains("noresize");
 				//Extra output
 				verbose = Args.parseFlags(args).contains("verbose") ? true : false;
 				//Shared component config in ML step
@@ -285,6 +286,7 @@ public class MultiGPSConfig {
 	public String getMEMEargs(){return MEMEargs;}
 	public boolean getMEMEnonparallel(){return MEMEnonparallel;}
 	public String getPotentialRegions(){return potentialRegions;}
+	public boolean resizePotentialRegions(){return resizePR;}
 	public boolean isVerbose(){return verbose;}
 	
 	/**
