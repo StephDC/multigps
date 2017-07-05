@@ -474,15 +474,19 @@ public class PotentialRegionFilter {
     			}
     			synchronized(potRegCountsSigChannel){
     				potRegCountsSigChannel.put(cond, potRegCountsSigChannel.get(cond)+currPotWeightSig);
+				System.err.println("Updating potRegCountsSigChannel="+potRegCountsSigChannel.get(cond));
     			}
     			synchronized(nonPotRegCountsSigChannel){
     				nonPotRegCountsSigChannel.put(cond, nonPotRegCountsSigChannel.get(cond)+currNonPotWeightSig);
+				System.err.println("Updating nonPotRegCountsSigChannel="+nonPotRegCountsSigChannel.get(cond));
     			}
     			synchronized(potRegCountsCtrlChannel){
     				potRegCountsCtrlChannel.put(cond, potRegCountsCtrlChannel.get(cond)+currPotWeightCtrl);
+				System.err.println("Updating potRegCountsCtrlChannel="+potRegCountsCtrlChannel.get(cond));
     			}
     			synchronized(nonPotRegCountsCtrlChannel){
     				nonPotRegCountsCtrlChannel.put(cond, nonPotRegCountsCtrlChannel.get(cond)+currNonPotWeightCtrl);
+				System.err.println("Updating nonPotRegCountsCtrlChannel="+nonPotRegCountsCtrlChannel.get(cond));
     			}
     		}
 	    }

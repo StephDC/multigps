@@ -383,6 +383,10 @@ public class BindingMixture {
     		double nonPotRegCountsSigChannel=potRegFilter.getNonPotRegCountsSigChannel(cond); 
     		double potRegCountsCtrlChannel=potRegFilter.getPotRegCountsCtrlChannel(cond);
     		double nonPotRegCountsCtrlChannel=potRegFilter.getNonPotRegCountsCtrlChannel(cond); 
+		System.err.println("potRegCountsSigChannel\t"+potRegCountsSigChannel);
+		System.err.println("nonPotRegCountsSigChannel\t"+nonPotRegCountsSigChannel);
+		System.err.println("potRegCountsCtrlChannel\t"+potRegCountsCtrlChannel);
+		System.err.println("nonPotRegCountsCtrlChannel\t"+nonPotRegCountsCtrlChannel);
     		List<Sample> ctrls = cond.getControlSamples();
     		
     		//relativeCtrlNoise just tells us if there is a systemic over/under representation of reads in potential regions (in the control)
