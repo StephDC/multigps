@@ -204,7 +204,7 @@ public class PotentialRegionFilter {
 	private Region parseLine(String line){
 		if (line.trim().equals("")) return null;
 		try{
-			String chromosome = line.trim().split(":")[0];
+			String chromosome = line.trim().split(":")[0].substring(3);
 			int start = Integer.parseInt(line.trim().split(":")[1].split("-")[0]);
 			int end  = Integer.parseInt(line.trim().split("-")[1]);
 			return new Region(gen,chromosome,start,end);
