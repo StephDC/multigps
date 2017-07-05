@@ -77,7 +77,7 @@ public class PotentialRegionFilter {
 		//Branch to read a given potential regions file here
 		if (!(config.getPotentialRegions()== "" || Files.exists(Paths.get(config.getPotentialRegions()))))
 			System.err.println("Potential Region File not Found! Fall back to potential region auto-detection.");
-		if (config.getPotentialRegions() == "" || (!Files.exists(Paths.get(config.getPotentialRegions())))){
+	//	if (config.getPotentialRegions() == "" || (!Files.exists(Paths.get(config.getPotentialRegions())))){
 			//Initialize background models
 			for(ExperimentCondition cond : manager.getConditions()){
 				conditionBackgrounds.put(cond, new BackgroundCollection());
@@ -111,7 +111,7 @@ public class PotentialRegionFilter {
 			binStep = config.POTREG_BIN_STEP;
 			if(binStep>maxBinWidth/2) binStep=maxBinWidth/2;
 			winExt = maxBinWidth/2;
-		}
+	//	}
 	}
 
 	//Accessors for read counts
@@ -176,26 +176,23 @@ public class PotentialRegionFilter {
     		}
         }
 
-        for(Region r : potentialRegions)
-        	potRegionLengthTotal+=(double)r.getWidth();
-
-     	return potentialRegions;
 		}
 		//Actual branch
 		else {
-			List<Region> result = new LinkedList<Region>();
+		//	List<Region> potentialRegions = new LinkedList<Region>();
 			Region tmp = null;
 			try{
 				for (String item: Files.readAllLines(Paths.get(config.getPotentialRegions()),Charset.forName("UTF-8"))){
 					tmp = parseLine(item);
-					if (tmp != null) result.add(tmp);
+					if (tmp != null) potentialRegions.add(tmp);
 				}
 			}
 			catch (IOException e){
 				e.printStackTrace();
 			}
-			return result;
 		}
+		for(Region r : potentialRegions) potRegionLengthTotal+=(double)r.getWidth();
+		return potentialRegions;
 	}
 	/**
 	 * Parse the potential regions file
