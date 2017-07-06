@@ -168,13 +168,6 @@ public class PotentialRegionFilter {
             }
         }
 
-        //Initialize signal & noise counts based on potential region calls
-        for(ExperimentCondition cond : manager.getConditions()){
-    		for(ControlledExperiment rep : cond.getReplicates()){
-    			if(rep.getSignalVsNoiseFraction()==0) //Only update if not already initialized
-    				rep.setSignalVsNoiseFraction(potRegCountsSigChannelByRep.get(rep)/(potRegCountsSigChannelByRep.get(rep)+nonPotRegCountsSigChannelByRep.get(rep)));
-    		}
-        }
 
 		}
 		//Actual branch
@@ -192,6 +185,17 @@ public class PotentialRegionFilter {
 			}
 		}
 		for(Region r : potentialRegions) potRegionLengthTotal+=(double)r.getWidth();
+		for (ExperimentCondition cond: manager.getConditions()){
+			potRegCountsSigChannel.put(cond,15960714.0);
+			nonPotRegCountsSigChannel.put(cond,9312115.0);
+		}
+        //Initialize signal & noise counts based on potential region calls
+        for(ExperimentCondition cond : manager.getConditions()){
+    		for(ControlledExperiment rep : cond.getReplicates()){
+    			if(rep.getSignalVsNoiseFraction()==0) //Only update if not already initialized
+    				rep.setSignalVsNoiseFraction(potRegCountsSigChannelByRep.get(rep)/(potRegCountsSigChannelByRep.get(rep)+nonPotRegCountsSigChannelByRep.get(rep)));
+    		}
+        }
 		return potentialRegions;
 	}
 	/**
