@@ -8,7 +8,6 @@ import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.nio.charset.Charset;
 
-import java.util.LinkedList;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -211,6 +210,7 @@ public class PotentialRegionFilter {
 	 * We  ignore strandedness here -- the object is to count ALL reads that will be loaded for analysis later
 	 * (and that thus will not be accounted for by the global noise model)
 	 * NOTE: Only used if we are side-loading potential regions file.
+	 * Adapted from Naomi's code
 	 * @param regs
 	 */
 	protected void countReadsInRegions(List<Region> regs){
