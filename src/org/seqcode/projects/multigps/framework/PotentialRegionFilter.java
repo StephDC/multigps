@@ -185,10 +185,12 @@ public class PotentialRegionFilter {
 			}
 		}
 		for(Region r : potentialRegions) potRegionLengthTotal+=(double)r.getWidth();
-		for (ExperimentCondition cond: manager.getConditions()){
+		/*for (ExperimentCondition cond: manager.getConditions()){
 			potRegCountsSigChannel.put(cond,15960714.0);
 			nonPotRegCountsSigChannel.put(cond,9312115.0);
-		}
+		}*/
+		countReadsInRegions(potentialRegions);
+		countReadsInRegionsByRep(potentialRegions);
         //Initialize signal & noise counts based on potential region calls
         for(ExperimentCondition cond : manager.getConditions()){
     		for(ControlledExperiment rep : cond.getReplicates()){
@@ -211,6 +213,122 @@ public class PotentialRegionFilter {
 			return new Region(gen,chromosome,start,end);
 		} catch (java.lang.ArrayIndexOutOfBoundsException e) {
 			return null;
+		}
+	}
+
+	/**
+	 * Count the total reads within potential regions (by condition). Assumes regions are sorted.
+	 * We  ignore strandedness here -- the object is to count ALL reads that will be loaded for analysis later
+	 * (and that thus will not be accounted for by the global noise model)
+	 * @param regs
+	 */
+	protected void countReadsInRegions(List<Region> regs){
+		List<Region> notPotentials = new ArrayList<Region>();
+		//Iterate through experiments
+		for(ExperimentCondition cond : manager.getConditions()){
+			double currPotWeightSig=0, currNonPotWeightSig=0, currPotWeightCtrl=0, currNonPotWeightCtrl=0;
+			String currChrm = null; Region prevReg = null ;
+			//Iterate through regions
+			for (Region  reg : regs){
+				Region notPotRegionPrevChrom = null; Region notPotRegionCurrChrom = null;
+				if (!reg.getChrom().equals(currChrm)){	//new chromosome
+					currChrm = reg.getChrom().toString();	//update chromosome only when you encounter the new chromosome
+					if (prevReg == null){	// 1st iteration
+						if (reg.getStart()!=1) //if region starts is not beginning of chromosome
+							notPotRegionCurrChrom = new Region(gen,reg.getChrom(),1, reg.getStart()-1);
+					}else{
+						if (prevReg.getEnd()!=gen.getChromLength(prevReg.getChrom())) //if the prevReg end is not chromosome end
+							notPotRegionPrevChrom = new Region(gen,prevReg.getChrom(),prevReg.getEnd()+1, gen.getChromLength(prevReg.getChrom()));
+						if (reg.getStart()!=1) //if region starts is not beginning of chromosome
+							notPotRegionCurrChrom = new Region(gen,reg.getChrom(),1, reg.getStart()-1);
+					}
+				}else{	//same chromosome
+					if (reg.getStart() > prevReg.getEnd()+1) // potential regions are not non-adjacent
+						notPotRegionCurrChrom = new Region(gen,reg.getChrom(),prevReg.getEnd()+1, reg.getStart()-1);
+				}
+				// add regions to the list
+				if (notPotRegionPrevChrom!=null)
+					notPotentials.add(notPotRegionPrevChrom);
+				if (notPotRegionCurrChrom!=null)
+					notPotentials.add(notPotRegionCurrChrom);
+
+				// update previous region
+				prevReg = reg;
+			}
+			if (prevReg.getEnd()!=gen.getChromLength(prevReg.getChrom()))
+				notPotentials.add(new Region(gen,prevReg.getChrom(),prevReg.getEnd()+1, gen.getChromLength(prevReg.getChrom())));
+
+			// count hits of notPotRegion and potRegion from signal and control experiments
+			for (ControlledExperiment rep : cond.getReplicates()){
+				for (Region  reg : regs){
+					currPotWeightSig += rep.getSignal().countHits(reg);
+					currPotWeightCtrl += rep.getControl().countHits(reg);
+				}
+				for (Region reg : notPotentials){
+					currNonPotWeightSig += rep.getSignal().countHits(reg);
+					currNonPotWeightCtrl += rep.getControl().countHits(reg);
+				}
+			}
+
+			potRegCountsSigChannel.put(cond, currPotWeightSig);
+			nonPotRegCountsSigChannel.put(cond, currNonPotWeightSig);
+			potRegCountsCtrlChannel.put(cond, currPotWeightCtrl);
+			nonPotRegCountsCtrlChannel.put(cond, currNonPotWeightCtrl);
+		}
+	}
+	/**
+	 * Count the total reads within potential regions (by replicate). Assumes regions are sorted.
+	 * We  ignore strandedness here -- the object is to count ALL reads that will be loaded for analysis later
+	 * (and that thus will not be accounted for by the global noise model)
+	 * @param regs
+	 */
+	protected void countReadsInRegionsByRep(List<Region> regs){
+		List<Region> notPotentials = new ArrayList<Region>();
+		//Iterate through experiments
+		for(ExperimentCondition cond : manager.getConditions()){
+			for (ControlledExperiment rep : cond.getReplicates()){
+				double currPotWeightSig=0, currNonPotWeightSig=0;
+				String currChrm = null; Region prevReg = null ;
+				//Iterate through regions
+				for (Region  reg : regs){
+					Region notPotRegionPrevChrom = null; Region notPotRegionCurrChrom = null;
+					if (!reg.getChrom().equals(currChrm)){	//new chromosome
+						currChrm = reg.getChrom().toString();	//update chromosome only when you encounter the new chromosome
+						if (prevReg == null){	// 1st iteration
+							if (reg.getStart()!=1) //if region starts is not beginning of chromosome
+								notPotRegionCurrChrom = new Region(gen,reg.getChrom(),1, reg.getStart()-1);
+						}else{
+							if (prevReg.getEnd()!=gen.getChromLength(prevReg.getChrom())) //if the prevReg end is not chromosome end
+								notPotRegionPrevChrom = new Region(gen,prevReg.getChrom(),prevReg.getEnd()+1, gen.getChromLength(prevReg.getChrom()));
+							if (reg.getStart()!=1) //if region starts is not beginning of chromosome
+								notPotRegionCurrChrom = new Region(gen,reg.getChrom(),1, reg.getStart()-1);
+						}
+					}else{	//same chromosome
+						if (reg.getStart() > prevReg.getEnd()+1) // potential regions are not non-adjacent
+							notPotRegionCurrChrom = new Region(gen,reg.getChrom(),prevReg.getEnd()+1, reg.getStart()-1);
+					}
+					// add regions to the list
+					if (notPotRegionPrevChrom!=null)
+						notPotentials.add(notPotRegionPrevChrom);
+					if (notPotRegionCurrChrom!=null)
+						notPotentials.add(notPotRegionCurrChrom);
+
+					// update previous region
+					prevReg = reg;
+				}
+				if (prevReg.getEnd()!=gen.getChromLength(prevReg.getChrom()))
+					notPotentials.add(new Region(gen,prevReg.getChrom(),prevReg.getEnd()+1, gen.getChromLength(prevReg.getChrom())));
+
+				// count hits of notPotRegion and potRegion from signal and control experiments
+				for (Region  reg : regs)
+					currPotWeightSig += rep.getSignal().countHits(reg);
+				for (Region reg : notPotentials){
+					currNonPotWeightSig += rep.getSignal().countHits(reg);
+
+				potRegCountsSigChannelByRep.put(rep, currPotWeightSig);
+				nonPotRegCountsSigChannelByRep.put(rep, currNonPotWeightSig);
+				}
+			}
 		}
 	}
 	/**
