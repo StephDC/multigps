@@ -220,6 +220,7 @@ public class PotentialRegionFilter {
 	 * Count the total reads within potential regions (by condition). Assumes regions are sorted.
 	 * We  ignore strandedness here -- the object is to count ALL reads that will be loaded for analysis later
 	 * (and that thus will not be accounted for by the global noise model)
+	 * NOTE: Only used if we are side-loading potential regions file.
 	 * @param regs
 	 */
 	protected void countReadsInRegions(List<Region> regs){
@@ -261,12 +262,12 @@ public class PotentialRegionFilter {
 			// count hits of notPotRegion and potRegion from signal and control experiments
 			for (ControlledExperiment rep : cond.getReplicates()){
 				for (Region  reg : regs){
-					currPotWeightSig += rep.getSignal().countHits(reg);
-					currPotWeightCtrl += rep.getControl().countHits(reg);
+					if (rep.getSignal() != null) currPotWeightSig += rep.getSignal().countHits(reg);
+					if (rep.getControl() != null) currPotWeightCtrl += rep.getControl().countHits(reg);
 				}
 				for (Region reg : notPotentials){
-					currNonPotWeightSig += rep.getSignal().countHits(reg);
-					currNonPotWeightCtrl += rep.getControl().countHits(reg);
+					if (rep.getSignal() != null) currNonPotWeightSig += rep.getSignal().countHits(reg);
+					if (rep.getControl() != null) currNonPotWeightCtrl += rep.getControl().countHits(reg);
 				}
 			}
 
@@ -280,6 +281,7 @@ public class PotentialRegionFilter {
 	 * Count the total reads within potential regions (by replicate). Assumes regions are sorted.
 	 * We  ignore strandedness here -- the object is to count ALL reads that will be loaded for analysis later
 	 * (and that thus will not be accounted for by the global noise model)
+	 * NOTE: ONLY used if we are side-loading the potential regions file.
 	 * @param regs
 	 */
 	protected void countReadsInRegionsByRep(List<Region> regs){
