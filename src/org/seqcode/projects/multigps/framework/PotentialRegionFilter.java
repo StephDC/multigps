@@ -8,7 +8,6 @@ import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.nio.charset.Charset;
 
-import java.util.LinkedList;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -76,20 +75,18 @@ public class PotentialRegionFilter {
 
 		//Branch to read a given potential regions file here
 		if (!(config.getPotentialRegions()== "" || Files.exists(Paths.get(config.getPotentialRegions()))))
-			System.err.println("Potential Region File not Found! Fall back to potential region auto-detection.");
-	//	if (config.getPotentialRegions() == "" || (!Files.exists(Paths.get(config.getPotentialRegions())))){
+			System.err.println("Potential Regions File not Found! Fall back to potential regions auto-detection.");
 			//Initialize background models
-			for(ExperimentCondition cond : manager.getConditions()){
-				conditionBackgrounds.put(cond, new BackgroundCollection());
-				int maxIR = 0; boolean hasControls=true;
-				for(ControlledExperiment rep : cond.getReplicates()){
-					if(bindingManager.getBindingModel(rep).getInfluenceRange()>maxIR)
-						maxIR = bindingManager.getBindingModel(rep).getInfluenceRange();
-					hasControls = hasControls && rep.hasControl();
-				}
-
-				float binWidth = maxIR;
-				if(binWidth>maxBinWidth){maxBinWidth=binWidth;}
+		for(ExperimentCondition cond : manager.getConditions()){
+			conditionBackgrounds.put(cond, new BackgroundCollection());
+			int maxIR = 0; boolean hasControls=true;
+			for(ControlledExperiment rep : cond.getReplicates()){
+				if(bindingManager.getBindingModel(rep).getInfluenceRange()>maxIR)
+					maxIR = bindingManager.getBindingModel(rep).getInfluenceRange();
+				hasControls = hasControls && rep.hasControl();
+			}
+			float binWidth = maxIR;
+			if(binWidth>maxBinWidth) maxBinWidth = binWidth;
 
     		//global threshold
     		conditionBackgrounds.get(cond).addBackgroundModel(new PoissonBackgroundModel(-1, config.getPRLogConf(), cond.getTotalSignalCount(), config.getGenome().getGenomeLength(), econfig.getMappableGenomeProp(), binWidth, '.', 1, true));
@@ -103,15 +100,14 @@ public class PotentialRegionFilter {
     		nonPotRegCountsSigChannel.put(cond, 0.0);
     		potRegCountsCtrlChannel.put(cond, 0.0);
     		nonPotRegCountsCtrlChannel.put(cond, 0.0);
-				for(ControlledExperiment rep : cond.getReplicates()){
-					potRegCountsSigChannelByRep.put(rep, 0.0);
-					nonPotRegCountsSigChannelByRep.put(rep, 0.0);
-				}
+			for(ControlledExperiment rep : cond.getReplicates()){
+				potRegCountsSigChannelByRep.put(rep, 0.0);
+				nonPotRegCountsSigChannelByRep.put(rep, 0.0);
 			}
-			binStep = config.POTREG_BIN_STEP;
-			if(binStep>maxBinWidth/2) binStep=maxBinWidth/2;
-			winExt = maxBinWidth/2;
-	//	}
+		}
+		binStep = config.POTREG_BIN_STEP;
+		if(binStep>maxBinWidth/2) binStep=maxBinWidth/2;
+		winExt = maxBinWidth/2;
 	}
 
 	//Accessors for read counts
@@ -130,7 +126,7 @@ public class PotentialRegionFilter {
 	 * @param testRegions
 	 */
 	public List<Region> execute(){
-		//Branch here for reading from a given file.
+		// Calculate the potential regions
 		if (config.getPotentialRegions() == "" || (!Files.exists(Paths.get(config.getPotentialRegions())))){
 			//TODO: check config for defined subset of regions
 			Iterator<Region> testRegions = new ChromosomeGenerator().execute(config.getGenome());
@@ -167,12 +163,9 @@ public class PotentialRegionFilter {
                 }
             }
         }
-
-
 		}
-		//Actual branch
+		// Read from a given file
 		else {
-		//	List<Region> potentialRegions = new LinkedList<Region>();
 			Region tmp = null;
 			try{
 				for (String item: Files.readAllLines(Paths.get(config.getPotentialRegions()),Charset.forName("UTF-8"))){
@@ -185,21 +178,17 @@ public class PotentialRegionFilter {
 			}
 		}
 		for(Region r : potentialRegions) potRegionLengthTotal+=(double)r.getWidth();
-		/*for (ExperimentCondition cond: manager.getConditions()){
-			potRegCountsSigChannel.put(cond,15960714.0);
-			nonPotRegCountsSigChannel.put(cond,9312115.0);
-		}*/
 		countReadsInRegions(potentialRegions);
 		countReadsInRegionsByRep(potentialRegions);
-        //Initialize signal & noise counts based on potential region calls
-        for(ExperimentCondition cond : manager.getConditions()){
-    		for(ControlledExperiment rep : cond.getReplicates()){
-    			if(rep.getSignalVsNoiseFraction()==0) //Only update if not already initialized
-    				rep.setSignalVsNoiseFraction(potRegCountsSigChannelByRep.get(rep)/(potRegCountsSigChannelByRep.get(rep)+nonPotRegCountsSigChannelByRep.get(rep)));
-    		}
-        }
+		//Initialize signal & noise counts based on potential region calls
+        	for(ExperimentCondition cond : manager.getConditions()){
+			for(ControlledExperiment rep : cond.getReplicates())
+				if(rep.getSignalVsNoiseFraction()==0) //Only update if not already initialized
+					rep.setSignalVsNoiseFraction(potRegCountsSigChannelByRep.get(rep)/(potRegCountsSigChannelByRep.get(rep)+nonPotRegCountsSigChannelByRep.get(rep)));
+		}
 		return potentialRegions;
 	}
+
 	/**
 	 * Parse the potential regions file
 	 * as used in the execute - branch 2.
@@ -221,6 +210,7 @@ public class PotentialRegionFilter {
 	 * We  ignore strandedness here -- the object is to count ALL reads that will be loaded for analysis later
 	 * (and that thus will not be accounted for by the global noise model)
 	 * NOTE: Only used if we are side-loading potential regions file.
+	 * Adapted from Naomi's code
 	 * @param regs
 	 */
 	protected void countReadsInRegions(List<Region> regs){
@@ -282,6 +272,7 @@ public class PotentialRegionFilter {
 	 * We  ignore strandedness here -- the object is to count ALL reads that will be loaded for analysis later
 	 * (and that thus will not be accounted for by the global noise model)
 	 * NOTE: ONLY used if we are side-loading the potential regions file.
+	 * Adapted from Naomi's code
 	 * @param regs
 	 */
 	protected void countReadsInRegionsByRep(List<Region> regs){
@@ -323,9 +314,9 @@ public class PotentialRegionFilter {
 
 				// count hits of notPotRegion and potRegion from signal and control experiments
 				for (Region  reg : regs)
-					currPotWeightSig += rep.getSignal().countHits(reg);
+					if (rep.getSignal() != null) currPotWeightSig += rep.getSignal().countHits(reg);
 				for (Region reg : notPotentials){
-					currNonPotWeightSig += rep.getSignal().countHits(reg);
+					if (rep.getSignal() != null) currNonPotWeightSig += rep.getSignal().countHits(reg);
 
 				potRegCountsSigChannelByRep.put(rep, currPotWeightSig);
 				nonPotRegCountsSigChannelByRep.put(rep, currNonPotWeightSig);
